@@ -69,6 +69,14 @@ function createBot(storage, config) {
         one_time_keyboard: false
       }
     })
+    if (await isAdmin(ctx)) {
+      await ctx.reply('پنل مدیریت', {
+        reply_markup: { inline_keyboard: [[
+          { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
+          { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
+        ]] }
+      })
+    }
   }
   async function replyFull(ctx) {
     const s = await storage.getStats()
@@ -131,6 +139,19 @@ function createBot(storage, config) {
       return
     }
     await ctx.reply(`دستورات مدیریت:\n/admin add <user_id> [role]\n/admin remove <user_id>\n/admin setrole <user_id> <role>\n/admin list`)
+  })
+  bot.action('admin:broadcast', async (ctx) => {
+    if (!(await isAdmin(ctx))) { await ctx.answerCbQuery(); return }
+    sessions.set(ctx.from.id, { step: 'text' })
+    await ctx.reply('متن پیام را ارسال کنید')
+    await ctx.answerCbQuery('شروع ارسال انبوه')
+  })
+  bot.action('admin:list', async (ctx) => {
+    if (!isSuper(ctx)) { await ctx.answerCbQuery(); return }
+    const list = await storage.listAdmins()
+    const lines = list.map(a => `${a.user_id} ${a.role}`)
+    await ctx.reply(lines.length ? lines.join('\n') : 'فهرست خالی است')
+    await ctx.answerCbQuery('فهرست ادمین‌ها')
   })
   bot.command('broadcast', async (ctx) => {
     if (!(await isAdmin(ctx))) return
