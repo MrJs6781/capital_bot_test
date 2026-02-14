@@ -7,6 +7,14 @@ let upsertUser = async () => {}
 let logEvent = async () => {}
 let getStats = async () => ({ usersTotal: 0, startsTotal: 0, clicksByName: [] })
 let getAllData = async () => ({ users: [], events: [] })
+let addAdmin = async () => {}
+let removeAdmin = async () => {}
+let listAdmins = async () => []
+let getAdminRole = async () => null
+let getRecipients = async () => []
+let createBroadcast = async () => ({ id: null })
+let listDueBroadcasts = async () => []
+let markBroadcastSent = async () => {}
 if (usePg) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -33,6 +41,25 @@ if (usePg) {
         name TEXT,
         ts TIMESTAMPTZ,
         metadata TEXT
+      )
+    `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS admins (
+        user_id BIGINT PRIMARY KEY,
+        role TEXT,
+        created_at TIMESTAMPTZ
+      )
+    `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS broadcasts (
+        id BIGSERIAL PRIMARY KEY,
+        creator_id BIGINT,
+        text TEXT,
+        filters TEXT,
+        status TEXT,
+        scheduled_at TIMESTAMPTZ,
+        sent_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ
       )
     `)
   }
@@ -82,10 +109,56 @@ if (usePg) {
     const events = await pool.query(`SELECT id, user_id, type, name, ts, metadata FROM events ORDER BY id ASC`)
     return { users: users.rows || [], events: events.rows || [] }
   }
+  addAdmin = async function(userId, role='admin') {
+    await pool.query(`INSERT INTO admins (user_id, role, created_at) VALUES ($1,$2,$3) ON CONFLICT (user_id) DO UPDATE SET role=EXCLUDED.role`, [userId, role, new Date().toISOString()])
+  }
+  removeAdmin = async function(userId) {
+    await pool.query(`DELETE FROM admins WHERE user_id=$1`, [userId])
+  }
+  listAdmins = async function() {
+    const r = await pool.query(`SELECT user_id, role, created_at FROM admins ORDER BY user_id ASC`)
+    return r.rows || []
+  }
+  getAdminRole = async function(userId) {
+    const r = await pool.query(`SELECT role FROM admins WHERE user_id=$1`, [userId])
+    return r.rows[0]?.role || null
+  }
+  getRecipients = async function(filters) {
+    const f = filters || {}
+    if (f.event === 'signup') {
+      const ids = await pool.query(`SELECT DISTINCT user_id FROM events WHERE type='click' AND name='signup'`)
+      const idList = (ids.rows || []).map(r => r.user_id).filter(Boolean)
+      if (f.lang) {
+        const u = await pool.query(`SELECT id FROM users WHERE id = ANY($1) AND language_code = $2`, [idList, f.lang])
+        return (u.rows || []).map(r => r.id)
+      }
+      return idList
+    }
+    if (f.lang) {
+      const u = await pool.query(`SELECT id FROM users WHERE language_code = $1`, [f.lang])
+      return (u.rows || []).map(r => r.id)
+    }
+    const u = await pool.query(`SELECT id FROM users`)
+    return (u.rows || []).map(r => r.id)
+  }
+  createBroadcast = async function(b) {
+    const r = await pool.query(
+      `INSERT INTO broadcasts (creator_id, text, filters, status, scheduled_at, created_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [b.creator_id, b.text, JSON.stringify(b.filters || {}), b.status, b.scheduled_at || null, new Date().toISOString()]
+    )
+    return { id: r.rows[0]?.id || null }
+  }
+  listDueBroadcasts = async function(nowIso) {
+    const r = await pool.query(`SELECT id, creator_id, text, filters, status, scheduled_at FROM broadcasts WHERE status='scheduled' AND scheduled_at <= $1 ORDER BY scheduled_at ASC`, [nowIso])
+    return r.rows || []
+  }
+  markBroadcastSent = async function(id) {
+    await pool.query(`UPDATE broadcasts SET status='sent', sent_at=$2 WHERE id=$1`, [id, new Date().toISOString()])
+  }
 } else {
   const DB_FILE = path.join(process.cwd(), 'analytics.json')
   if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, events: [] }))
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, events: [], admins: [], broadcasts: [] }))
   }
   const readStore = () => JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'))
   const writeStore = (s) => fs.writeFileSync(DB_FILE, JSON.stringify(s))
@@ -137,5 +210,69 @@ if (usePg) {
     const events = s.events
     return { users, events }
   }
+  addAdmin = async function(userId, role='admin') {
+    const s = readStore()
+    const i = s.admins.findIndex(a => a.user_id === userId)
+    const rec = { user_id: userId, role, created_at: new Date().toISOString() }
+    if (i >= 0) s.admins[i] = rec
+    else s.admins.push(rec)
+    writeStore(s)
+  }
+  removeAdmin = async function(userId) {
+    const s = readStore()
+    s.admins = s.admins.filter(a => a.user_id !== userId)
+    writeStore(s)
+  }
+  listAdmins = async function() {
+    const s = readStore()
+    return s.admins || []
+  }
+  getAdminRole = async function(userId) {
+    const s = readStore()
+    const a = (s.admins || []).find(a => a.user_id === userId)
+    return a ? a.role : null
+  }
+  getRecipients = async function(filters) {
+    const s = readStore()
+    let ids = Object.keys(s.users).map(x => Number(x))
+    if (filters && filters.lang) {
+      ids = ids.filter(id => (s.users[id]?.language_code || '').toLowerCase() === filters.lang.toLowerCase())
+    }
+    if (filters && filters.event === 'signup') {
+      const clicked = new Set(s.events.filter(e => e.type === 'click' && e.name === 'signup').map(e => e.user_id).filter(Boolean))
+      ids = ids.filter(id => clicked.has(id))
+    }
+    return ids
+  }
+  createBroadcast = async function(b) {
+    const s = readStore()
+    const id = (s.broadcasts?.length || 0) + 1
+    s.broadcasts.push({
+      id,
+      creator_id: b.creator_id,
+      text: b.text,
+      filters: b.filters || {},
+      status: b.status,
+      scheduled_at: b.scheduled_at || null,
+      sent_at: null,
+      created_at: new Date().toISOString()
+    })
+    writeStore(s)
+    return { id }
+  }
+  listDueBroadcasts = async function(nowIso) {
+    const s = readStore()
+    const now = new Date(nowIso).getTime()
+    return (s.broadcasts || []).filter(b => b.status === 'scheduled' && b.scheduled_at && new Date(b.scheduled_at).getTime() <= now)
+  }
+  markBroadcastSent = async function(id) {
+    const s = readStore()
+    const i = (s.broadcasts || []).findIndex(b => b.id === id)
+    if (i >= 0) {
+      s.broadcasts[i].status = 'sent'
+      s.broadcasts[i].sent_at = new Date().toISOString()
+    }
+    writeStore(s)
+  }
 }
-module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg }
+module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg, addAdmin, removeAdmin, listAdmins, getAdminRole, getRecipients, createBroadcast, listDueBroadcasts, markBroadcastSent }

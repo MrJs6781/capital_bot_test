@@ -1,9 +1,18 @@
 const { Telegraf } = require('telegraf')
 const https = require('https')
-const { delay, makeUrl, chunkAndReply, formatReport } = require('./utils')
+const { delay, makeUrl, chunkAndReply, formatReport, parseDateTime } = require('./utils')
 function createBot(storage, config) {
   const agent = new https.Agent({ family: 4 })
   const bot = new Telegraf(process.env.BOT_TOKEN, { telegram: { agent } })
+  const sessions = new Map()
+  function isSuper(ctx) {
+    return config.superAdminId && ctx.from && ctx.from.id === config.superAdminId
+  }
+  async function isAdmin(ctx) {
+    if (isSuper(ctx)) return true
+    const role = await storage.getAdminRole(ctx.from.id)
+    return !!role
+  }
   async function sendStart(ctx) {
     await storage.upsertUser(ctx.from)
     await storage.logEvent(ctx.from.id, 'start', 'start')
@@ -69,6 +78,20 @@ function createBot(storage, config) {
       await ctx.reply(m, { parse_mode: 'HTML' })
     }
   }
+  async function previewRecipients(filters) {
+    const ids = await storage.getRecipients(filters)
+    return { count: ids.length, ids }
+  }
+  async function sendBroadcastNow(text, filters, creatorId) {
+    const ids = await storage.getRecipients(filters)
+    const { id } = await storage.createBroadcast({ creator_id: creatorId, text, filters, status: 'pending' })
+    for (const uid of ids) {
+      try { await bot.telegram.sendMessage(uid, text) } catch {}
+      await delay(30)
+    }
+    await storage.markBroadcastSent(id)
+    return ids.length
+  }
   bot.start(async (ctx) => { try { await sendStart(ctx) } catch {} })
   bot.action('stats', async (ctx) => { try { await replyFull(ctx); await ctx.answerCbQuery() } catch { await ctx.answerCbQuery('خطای گزارش') } })
   bot.command('stats', async (ctx) => { try { await replyFull(ctx) } catch { await ctx.reply('خطا در گزارش') } })
@@ -79,6 +102,105 @@ function createBot(storage, config) {
   bot.hears('گزارش', async (ctx) => { try { await replyFull(ctx) } catch {} })
   bot.hears('شروع', async (ctx) => { try { await sendStart(ctx) } catch {} })
   bot.hears('راهنما', async (ctx) => { const t = `دستورات:\n/start شروع\n/stats گزارش کامل\n/help راهنما`; await ctx.reply(t) })
+  bot.command('admin', async (ctx) => {
+    if (!isSuper(ctx)) return
+    const parts = (ctx.message.text || '').trim().split(/\s+/)
+    const cmd = parts[1]
+    if (cmd === 'add' && parts[2]) {
+      const uid = Number(parts[2]); const role = parts[3] || 'admin'
+      await storage.addAdmin(uid, role)
+      await ctx.reply(`ادمین اضافه شد: ${uid} نقش: ${role}`)
+      return
+    }
+    if (cmd === 'remove' && parts[2]) {
+      const uid = Number(parts[2])
+      await storage.removeAdmin(uid)
+      await ctx.reply(`ادمین حذف شد: ${uid}`)
+      return
+    }
+    if (cmd === 'setrole' && parts[2] && parts[3]) {
+      const uid = Number(parts[2]); const role = parts[3]
+      await storage.addAdmin(uid, role)
+      await ctx.reply(`نقش بروزرسانی شد: ${uid} => ${role}`)
+      return
+    }
+    if (cmd === 'list') {
+      const list = await storage.listAdmins()
+      const lines = list.map(a => `${a.user_id} ${a.role}`)
+      await ctx.reply(lines.length ? lines.join('\n') : 'فهرست خالی است')
+      return
+    }
+    await ctx.reply(`دستورات مدیریت:\n/admin add <user_id> [role]\n/admin remove <user_id>\n/admin setrole <user_id> <role>\n/admin list`)
+  })
+  bot.command('broadcast', async (ctx) => {
+    if (!(await isAdmin(ctx))) return
+    sessions.set(ctx.from.id, { step: 'text' })
+    await ctx.reply('متن پیام را ارسال کنید')
+  })
+  bot.on('text', async (ctx) => {
+    const s = sessions.get(ctx.from.id)
+    if (!s) return
+    if (s.step === 'text') {
+      s.text = ctx.message.text
+      s.step = 'filter'
+      await ctx.reply('فیلتر مخاطبان را انتخاب کنید', {
+        reply_markup: { inline_keyboard: [[
+          { text: 'همه', callback_data: 'filter:all' },
+          { text: 'فارسی', callback_data: 'filter:fa' },
+          { text: 'انگلیسی', callback_data: 'filter:en' },
+          { text: 'ثبت‌نام', callback_data: 'filter:signup' }
+        ]] }
+      })
+      return
+    }
+    if (s.step === 'schedule') {
+      const dt = parseDateTime(ctx.message.text)
+      if (!dt) { await ctx.reply('فرمت زمان نامعتبر است. نمونه: 2026-02-15 21:30'); return }
+      const filters = s.filters || {}
+      const { id } = await storage.createBroadcast({ creator_id: ctx.from.id, text: s.text, filters, status: 'scheduled', scheduled_at: dt.toISOString() })
+      sessions.delete(ctx.from.id)
+      await ctx.reply(`زمان‌بندی شد: #${id} در ${dt.toLocaleString('fa-IR', { timeZone: 'Asia/Tehran', hour12: false })}`)
+      return
+    }
+  })
+  bot.action(/filter:(.+)/, async (ctx) => {
+    const s = sessions.get(ctx.from.id)
+    if (!s) return
+    const key = ctx.match[1]
+    const filters = {}
+    if (key === 'fa') filters.lang = 'fa'
+    else if (key === 'en') filters.lang = 'en'
+    else if (key === 'signup') filters.event = 'signup'
+    s.filters = filters
+    const pr = await previewRecipients(filters)
+    await ctx.reply(`پیش‌نمایش:\nگیرندگان: ${pr.count}\n\n${s.text}`, {
+      reply_markup: { inline_keyboard: [[
+        { text: 'ارسال اکنون', callback_data: 'send:now' },
+        { text: 'زمان‌بندی', callback_data: 'send:schedule' },
+        { text: 'انصراف', callback_data: 'send:cancel' }
+      ]] }
+    })
+    await ctx.answerCbQuery()
+  })
+  bot.action(/send:(.+)/, async (ctx) => {
+    const s = sessions.get(ctx.from.id)
+    if (!s) return
+    const act = ctx.match[1]
+    if (act === 'cancel') { sessions.delete(ctx.from.id); await ctx.reply('لغو شد'); await ctx.answerCbQuery(); return }
+    if (act === 'now') {
+      const sent = await sendBroadcastNow(s.text, s.filters || {}, ctx.from.id)
+      sessions.delete(ctx.from.id)
+      await ctx.reply(`ارسال شد به ${sent} مخاطب`)
+      await ctx.answerCbQuery()
+      return
+    }
+    if (act === 'schedule') {
+      s.step = 'schedule'
+      await ctx.reply('زمان ارسال را وارد کنید. نمونه: 2026-02-15 21:30')
+      await ctx.answerCbQuery()
+      return
+    }
+  })
   return bot
 }
 module.exports = { createBot }

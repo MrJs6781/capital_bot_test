@@ -19,6 +19,14 @@ function fmtDate(d) {
   if (!date || isNaN(date.getTime())) return '-'
   return date.toLocaleString('fa-IR', { timeZone: 'Asia/Tehran', hour12: false })
 }
+function parseDateTime(s) {
+  if (!s) return null
+  const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/)
+  if (!m) return null
+  const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]), h = Number(m[4]), mi = Number(m[5])
+  const dt = new Date(y, mo, d, h, mi, 0)
+  return isNaN(dt.getTime()) ? null : dt
+}
 function formatReport(stats, all) {
   const clicksLines = (stats.clicksByName || []).map(r => `• ${r.name}: ${r.c}`)
   const summary =
@@ -44,4 +52,4 @@ function formatReport(stats, all) {
     `<pre>${eventsHeader}\n${eventsRows.length ? eventsRows.join('\n') : '—'}</pre>`
   return [summary, usersBlock, eventsBlock]
 }
-module.exports = { delay, makeUrl, chunkAndReply, formatReport }
+module.exports = { delay, makeUrl, chunkAndReply, formatReport, parseDateTime }

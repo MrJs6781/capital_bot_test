@@ -5,12 +5,14 @@ const storage = require("./src/storage");
 const config = require("./src/config");
 const app = createApp(storage, config);
 const bot = createBot(storage, config);
+const { createScheduler } = require("./src/scheduler");
 (async () => {
   try {
     await storage.initDb();
   } catch {}
   app.listen(config.port);
   bot.launch();
+  const scheduler = createScheduler(storage, bot, config);
   await bot.telegram.setMyCommands([
     { command: "start", description: "شروع" },
     { command: "stats", description: "گزارش" },
