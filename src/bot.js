@@ -117,7 +117,7 @@ function createBot(storage, config) {
     const rows = [[
       { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
       { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
-    ], [{ text: 'افزودن ادمین', callback_data: 'admin:add' }]]
+    ], [{ text: 'افزودن ادمین', callback_data: 'admin:add' }, { text: 'حذف ادمین', callback_data: 'admin:remove' }]]
     if (isSup) rows.push([{ text: 'افزودن سوپرادمین', callback_data: 'admin:addsuper' }])
     await ctx.reply('پنل مدیریت', { reply_markup: { inline_keyboard: rows } })
   })
