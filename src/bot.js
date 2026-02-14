@@ -5,11 +5,13 @@ function createBot(storage, config) {
   const agent = new https.Agent({ family: 4 })
   const bot = new Telegraf(process.env.BOT_TOKEN, { telegram: { agent } })
   const sessions = new Map()
-  function isSuper(ctx) {
-    return config.superAdminId && ctx.from && ctx.from.id === config.superAdminId
+  async function isSuper(ctx) {
+    if (config.superAdminId && ctx.from && ctx.from.id === config.superAdminId) return true
+    const role = await storage.getAdminRole(ctx.from.id)
+    return role === 'superadmin'
   }
   async function isAdmin(ctx) {
-    if (isSuper(ctx)) return true
+    if (await isSuper(ctx)) return true
     const role = await storage.getAdminRole(ctx.from.id)
     return !!role
   }
@@ -68,11 +70,12 @@ function createBot(storage, config) {
       : [[{ text: 'شروع' }, { text: 'گزارش' }], [{ text: 'راهنما' }]]
     await ctx.reply(`منوی اصلی`, { reply_markup: { keyboard: kb, resize_keyboard: true, one_time_keyboard: false } })
     if (await isAdmin(ctx)) {
+      const isSup = await isSuper(ctx)
       await ctx.reply('پنل مدیریت', {
         reply_markup: { inline_keyboard: [[
           { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
           { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
-        ]] }
+        ], [{ text: 'افزودن ادمین', callback_data: 'admin:add' }].concat(isSup ? [[{ text: 'افزودن سوپرادمین', callback_data: 'admin:addsuper' }]] : [])] }
       })
     }
   }
@@ -110,15 +113,16 @@ function createBot(storage, config) {
   bot.hears('راهنما', async (ctx) => { const t = `دستورات:\n/start شروع\n/stats گزارش کامل\n/help راهنما`; await ctx.reply(t) })
   bot.hears('مدیریت', async (ctx) => {
     if (!(await isAdmin(ctx))) return
-    await ctx.reply('پنل مدیریت', {
-      reply_markup: { inline_keyboard: [[
-        { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
-        { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
-      ]] }
-    })
+    const isSup = await isSuper(ctx)
+    const rows = [[
+      { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
+      { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
+    ], [{ text: 'افزودن ادمین', callback_data: 'admin:add' }]]
+    if (isSup) rows.push([{ text: 'افزودن سوپرادمین', callback_data: 'admin:addsuper' }])
+    await ctx.reply('پنل مدیریت', { reply_markup: { inline_keyboard: rows } })
   })
   bot.command('admin', async (ctx) => {
-    if (!isSuper(ctx)) return
+    if (!(await isSuper(ctx))) return
     const parts = (ctx.message.text || '').trim().split(/\s+/)
     const cmd = parts[1]
     if (cmd === 'add' && parts[2]) {
@@ -154,11 +158,23 @@ function createBot(storage, config) {
     await ctx.answerCbQuery('شروع ارسال انبوه')
   })
   bot.action('admin:list', async (ctx) => {
-    if (!isSuper(ctx)) { await ctx.answerCbQuery(); return }
+    if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
     const list = await storage.listAdmins()
     const lines = list.map(a => `${a.user_id} ${a.role}`)
     await ctx.reply(lines.length ? lines.join('\n') : 'فهرست خالی است')
     await ctx.answerCbQuery('فهرست ادمین‌ها')
+  })
+  bot.action('admin:add', async (ctx) => {
+    if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
+    sessions.set(ctx.from.id, { step: 'add_admin_id', role: 'admin' })
+    await ctx.reply('شناسه کاربر ادمین را وارد کنید')
+    await ctx.answerCbQuery('افزودن ادمین')
+  })
+  bot.action('admin:addsuper', async (ctx) => {
+    if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
+    sessions.set(ctx.from.id, { step: 'add_admin_id', role: 'superadmin' })
+    await ctx.reply('شناسه کاربر سوپرادمین را وارد کنید')
+    await ctx.answerCbQuery('افزودن سوپرادمین')
   })
   bot.command('broadcast', async (ctx) => {
     if (!(await isAdmin(ctx))) return
@@ -168,6 +184,14 @@ function createBot(storage, config) {
   bot.on('text', async (ctx) => {
     const s = sessions.get(ctx.from.id)
     if (!s) return
+    if (s.step === 'add_admin_id') {
+      const uid = Number((ctx.message.text || '').trim())
+      if (!uid || isNaN(uid)) { await ctx.reply('شناسه نامعتبر است'); return }
+      await storage.addAdmin(uid, s.role || 'admin')
+      sessions.delete(ctx.from.id)
+      await ctx.reply(s.role === 'superadmin' ? 'سوپرادمین اضافه شد' : 'ادمین اضافه شد')
+      return
+    }
     if (s.step === 'text') {
       s.text = ctx.message.text
       s.step = 'filter'
