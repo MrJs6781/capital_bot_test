@@ -62,13 +62,11 @@ function createBot(storage, config) {
     await delay(700)
     await ctx.reply(`🧾 گزارش ساده`, { reply_markup: { inline_keyboard: [[{ text: 'مشاهده گزارش', callback_data: 'stats' }]] } })
     await delay(500)
-    await ctx.reply(`منوی اصلی`, {
-      reply_markup: {
-        keyboard: [[{ text: 'شروع' }, { text: 'گزارش' }], [{ text: 'راهنما' }]],
-        resize_keyboard: true,
-        one_time_keyboard: false
-      }
-    })
+    const isAdm = await isAdmin(ctx)
+    const kb = isAdm
+      ? [[{ text: 'شروع' }, { text: 'گزارش' }], [{ text: 'راهنما' }, { text: 'مدیریت' }]]
+      : [[{ text: 'شروع' }, { text: 'گزارش' }], [{ text: 'راهنما' }]]
+    await ctx.reply(`منوی اصلی`, { reply_markup: { keyboard: kb, resize_keyboard: true, one_time_keyboard: false } })
     if (await isAdmin(ctx)) {
       await ctx.reply('پنل مدیریت', {
         reply_markup: { inline_keyboard: [[
@@ -110,6 +108,15 @@ function createBot(storage, config) {
   bot.hears('گزارش', async (ctx) => { try { await replyFull(ctx) } catch {} })
   bot.hears('شروع', async (ctx) => { try { await sendStart(ctx) } catch {} })
   bot.hears('راهنما', async (ctx) => { const t = `دستورات:\n/start شروع\n/stats گزارش کامل\n/help راهنما`; await ctx.reply(t) })
+  bot.hears('مدیریت', async (ctx) => {
+    if (!(await isAdmin(ctx))) return
+    await ctx.reply('پنل مدیریت', {
+      reply_markup: { inline_keyboard: [[
+        { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
+        { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
+      ]] }
+    })
+  })
   bot.command('admin', async (ctx) => {
     if (!isSuper(ctx)) return
     const parts = (ctx.message.text || '').trim().split(/\s+/)

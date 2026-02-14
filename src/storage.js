@@ -62,6 +62,10 @@ if (usePg) {
         created_at TIMESTAMPTZ
       )
     `)
+    const rc = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name='admins' AND column_name='role'`)
+    if (rc.rowCount === 0) { await pool.query(`ALTER TABLE admins ADD COLUMN role TEXT`) }
+    const cc = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name='admins' AND column_name='created_at'`)
+    if (cc.rowCount === 0) { await pool.query(`ALTER TABLE admins ADD COLUMN created_at TIMESTAMPTZ`) }
   }
   upsertUser = async function(from) {
     const now = new Date().toISOString()
