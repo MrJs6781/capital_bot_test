@@ -19,14 +19,6 @@ function fmtDate(d) {
   if (!date || isNaN(date.getTime())) return '-'
   return date.toLocaleString('fa-IR', { timeZone: 'Asia/Tehran', hour12: false })
 }
-function parseTehranDateTime(str) {
-  const m = (str || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/)
-  if (!m) return null
-  const [_, y, mo, d, h, mi] = m
-  const iso = `${y}-${mo}-${d}T${h}:${mi}:00+03:30`
-  const dt = new Date(iso)
-  return isNaN(dt.getTime()) ? null : dt
-}
 function formatReport(stats, all) {
   const clicksLines = (stats.clicksByName || []).map(r => `• ${r.name}: ${r.c}`)
   const summary =
@@ -52,4 +44,4 @@ function formatReport(stats, all) {
     `<pre>${eventsHeader}\n${eventsRows.length ? eventsRows.join('\n') : '—'}</pre>`
   return [summary, usersBlock, eventsBlock]
 }
-module.exports = { delay, makeUrl, chunkAndReply, formatReport, parseTehranDateTime }
+module.exports = { delay, makeUrl, chunkAndReply, formatReport }
