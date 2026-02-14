@@ -7,11 +7,6 @@ let upsertUser = async () => {}
 let logEvent = async () => {}
 let getStats = async () => ({ usersTotal: 0, startsTotal: 0, clicksByName: [] })
 let getAllData = async () => ({ users: [], events: [] })
-let getAdmins = async () => []
-let addAdmin = async () => {}
-let removeAdmin = async () => {}
-let isAdmin = async () => false
-let isSuperAdmin = (uid) => Number(process.env.SUPER_ADMIN_ID || 0) === Number(uid)
 if (usePg) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -38,12 +33,6 @@ if (usePg) {
         name TEXT,
         ts TIMESTAMPTZ,
         metadata TEXT
-      )
-    `)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS admins (
-        user_id BIGINT PRIMARY KEY,
-        created_at TIMESTAMPTZ
       )
     `)
   }
@@ -93,26 +82,10 @@ if (usePg) {
     const events = await pool.query(`SELECT id, user_id, type, name, ts, metadata FROM events ORDER BY id ASC`)
     return { users: users.rows || [], events: events.rows || [] }
   }
-  getAdmins = async function() {
-    const r = await pool.query(`SELECT user_id FROM admins ORDER BY user_id ASC`)
-    return (r.rows || []).map(x => Number(x.user_id))
-  }
-  addAdmin = async function(uid) {
-    const now = new Date().toISOString()
-    await pool.query(`INSERT INTO admins (user_id, created_at) VALUES ($1,$2) ON CONFLICT (user_id) DO NOTHING`, [Number(uid), now])
-  }
-  removeAdmin = async function(uid) {
-    await pool.query(`DELETE FROM admins WHERE user_id=$1`, [Number(uid)])
-  }
-  isAdmin = async function(uid) {
-    if (isSuperAdmin(uid)) return true
-    const r = await pool.query(`SELECT 1 FROM admins WHERE user_id=$1`, [Number(uid)])
-    return r.rowCount > 0
-  }
 } else {
   const DB_FILE = path.join(process.cwd(), 'analytics.json')
   if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, events: [], admins: [] }))
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, events: [] }))
   }
   const readStore = () => JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'))
   const writeStore = (s) => fs.writeFileSync(DB_FILE, JSON.stringify(s))
@@ -164,26 +137,5 @@ if (usePg) {
     const events = s.events
     return { users, events }
   }
-  getAdmins = async function() {
-    const s = readStore()
-    return (s.admins || []).map(Number)
-  }
-  addAdmin = async function(uid) {
-    const s = readStore()
-    s.admins = Array.isArray(s.admins) ? s.admins : []
-    const id = Number(uid)
-    if (!s.admins.includes(id)) s.admins.push(id)
-    writeStore(s)
-  }
-  removeAdmin = async function(uid) {
-    const s = readStore()
-    s.admins = (s.admins || []).map(Number).filter(x => x !== Number(uid))
-    writeStore(s)
-  }
-  isAdmin = async function(uid) {
-    if (isSuperAdmin(uid)) return true
-    const s = readStore()
-    return (s.admins || []).map(Number).includes(Number(uid))
-  }
 }
-module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, getAdmins, addAdmin, removeAdmin, isAdmin, isSuperAdmin, usePg }
+module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg }
