@@ -15,6 +15,7 @@ let getRecipients = async () => []
 let createBroadcast = async () => ({ id: null })
 let listDueBroadcasts = async () => []
 let markBroadcastSent = async () => {}
+let resolveUserIdByUsername = async () => null
 if (usePg) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -159,6 +160,12 @@ if (usePg) {
   markBroadcastSent = async function(id) {
     await pool.query(`UPDATE broadcasts SET status='sent', sent_at=$2 WHERE id=$1`, [id, new Date().toISOString()])
   }
+  resolveUserIdByUsername = async function(username) {
+    if (!username) return null
+    const clean = String(username).replace(/^@/, '')
+    const r = await pool.query(`SELECT id FROM users WHERE lower(username) = lower($1) LIMIT 1`, [clean])
+    return r.rows[0]?.id || null
+  }
 } else {
   const DB_FILE = path.join(process.cwd(), 'analytics.json')
   if (!fs.existsSync(DB_FILE)) {
@@ -278,5 +285,12 @@ if (usePg) {
     }
     writeStore(s)
   }
+  resolveUserIdByUsername = async function(username) {
+    if (!username) return null
+    const clean = String(username).replace(/^@/, '')
+    const s = readStore()
+    const found = Object.values(s.users).find(u => (u.username || '').toLowerCase() === clean.toLowerCase())
+    return found ? found.id : null
+  }
 }
-module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg, addAdmin, removeAdmin, listAdmins, getAdminRole, getRecipients, createBroadcast, listDueBroadcasts, markBroadcastSent }
+module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg, addAdmin, removeAdmin, listAdmins, getAdminRole, getRecipients, createBroadcast, listDueBroadcasts, markBroadcastSent, resolveUserIdByUsername }

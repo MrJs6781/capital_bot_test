@@ -75,7 +75,7 @@ function createBot(storage, config) {
         reply_markup: { inline_keyboard: [[
           { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
           { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
-        ], [{ text: 'افزودن ادمین', callback_data: 'admin:add' }].concat(isSup ? [[{ text: 'افزودن سوپرادمین', callback_data: 'admin:addsuper' }]] : [])] }
+        ], [{ text: 'افزودن ادمین', callback_data: 'admin:add' }, { text: 'حذف ادمین', callback_data: 'admin:remove' }].concat(isSup ? [[{ text: 'افزودن سوپرادمین', callback_data: 'admin:addsuper' }]] : [])] }
       })
     }
   }
@@ -126,19 +126,27 @@ function createBot(storage, config) {
     const parts = (ctx.message.text || '').trim().split(/\s+/)
     const cmd = parts[1]
     if (cmd === 'add' && parts[2]) {
-      const uid = Number(parts[2]); const role = parts[3] || 'admin'
+      const role = parts[3] || 'admin'
+      const token = parts[2]
+      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
+      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
       await storage.addAdmin(uid, role)
       await ctx.reply(`ادمین اضافه شد: ${uid} نقش: ${role}`)
       return
     }
     if (cmd === 'remove' && parts[2]) {
-      const uid = Number(parts[2])
+      const token = parts[2]
+      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
+      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
       await storage.removeAdmin(uid)
       await ctx.reply(`ادمین حذف شد: ${uid}`)
       return
     }
     if (cmd === 'setrole' && parts[2] && parts[3]) {
-      const uid = Number(parts[2]); const role = parts[3]
+      const token = parts[2]
+      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
+      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
+      const role = parts[3]
       await storage.addAdmin(uid, role)
       await ctx.reply(`نقش بروزرسانی شد: ${uid} => ${role}`)
       return
@@ -167,14 +175,20 @@ function createBot(storage, config) {
   bot.action('admin:add', async (ctx) => {
     if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
     sessions.set(ctx.from.id, { step: 'add_admin_id', role: 'admin' })
-    await ctx.reply('شناسه کاربر ادمین را وارد کنید')
+    await ctx.reply('شناسه عددی یا یوزرنیم کاربر را وارد کنید (مثال: 123456 یا @username)')
     await ctx.answerCbQuery('افزودن ادمین')
   })
   bot.action('admin:addsuper', async (ctx) => {
     if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
     sessions.set(ctx.from.id, { step: 'add_admin_id', role: 'superadmin' })
-    await ctx.reply('شناسه کاربر سوپرادمین را وارد کنید')
+    await ctx.reply('شناسه عددی یا یوزرنیم سوپرادمین را وارد کنید (مثال: 123456 یا @username)')
     await ctx.answerCbQuery('افزودن سوپرادمین')
+  })
+  bot.action('admin:remove', async (ctx) => {
+    if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
+    sessions.set(ctx.from.id, { step: 'remove_admin_id' })
+    await ctx.reply('شناسه عددی یا یوزرنیم ادمین را برای حذف وارد کنید')
+    await ctx.answerCbQuery('حذف ادمین')
   })
   bot.command('broadcast', async (ctx) => {
     if (!(await isAdmin(ctx))) return
@@ -185,11 +199,21 @@ function createBot(storage, config) {
     const s = sessions.get(ctx.from.id)
     if (!s) return
     if (s.step === 'add_admin_id') {
-      const uid = Number((ctx.message.text || '').trim())
-      if (!uid || isNaN(uid)) { await ctx.reply('شناسه نامعتبر است'); return }
+      const token = (ctx.message.text || '').trim()
+      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
+      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
       await storage.addAdmin(uid, s.role || 'admin')
       sessions.delete(ctx.from.id)
       await ctx.reply(s.role === 'superadmin' ? 'سوپرادمین اضافه شد' : 'ادمین اضافه شد')
+      return
+    }
+    if (s.step === 'remove_admin_id') {
+      const token = (ctx.message.text || '').trim()
+      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
+      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
+      await storage.removeAdmin(uid)
+      sessions.delete(ctx.from.id)
+      await ctx.reply('ادمین حذف شد')
       return
     }
     if (s.step === 'text') {
