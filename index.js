@@ -13,6 +13,7 @@ const PORT = process.env.PORT || 3000;
 let upsertUser = async () => {};
 let logEvent = async () => {};
 let initDb = async () => {};
+let getStats = async () => ({ usersTotal: 0, startsTotal: 0, clicksByName: [] });
 const usePg = !!process.env.DATABASE_URL;
 if (usePg) {
   const pool = new Pool({
@@ -78,6 +79,12 @@ if (usePg) {
       metadata ? JSON.stringify(metadata) : null
     ]);
   };
+  getStats = async function() {
+    const u = await pool.query(`SELECT COUNT(*)::int AS c FROM users`);
+    const s = await pool.query(`SELECT COUNT(*)::int AS c FROM events WHERE type='start'`);
+    const c = await pool.query(`SELECT name, COUNT(*)::int AS c FROM events WHERE type='click' GROUP BY name ORDER BY c DESC`);
+    return { usersTotal: u.rows[0]?.c || 0, startsTotal: s.rows[0]?.c || 0, clicksByName: c.rows || [] };
+  };
 } else {
   const DB_FILE = path.join(process.cwd(), 'analytics.json');
   if (!fs.existsSync(DB_FILE)) {
@@ -113,6 +120,19 @@ if (usePg) {
       metadata: metadata ? JSON.stringify(metadata) : null
     });
     writeStore(s);
+  };
+  getStats = async function() {
+    const s = readStore();
+    const usersTotal = Object.keys(s.users).length;
+    const startsTotal = s.events.filter(e => e.type === 'start').length;
+    const clicks = {};
+    for (const e of s.events) {
+      if (e.type === 'click') {
+        clicks[e.name] = (clicks[e.name] || 0) + 1;
+      }
+    }
+    const clicksByName = Object.entries(clicks).map(([name, c]) => ({ name, c })).sort((a,b)=>b.c-a.c);
+    return { usersTotal, startsTotal, clicksByName };
   };
 }
 
@@ -179,6 +199,11 @@ bot.start(async (ctx) => {
 👉 https://t.me/CapitalChainfarsi_support`,
     { reply_markup: { inline_keyboard: [[{ text: "پشتیبانی تلگرام", url: makeUrl("support", ctx.from.id) }]] } },
   );
+  await delay(700);
+  await ctx.reply(
+    `🧾 گزارش ساده`,
+    { reply_markup: { inline_keyboard: [[{ text: "مشاهده گزارش", callback_data: "stats" }]] } },
+  );
 });
 
 app.get('/r/:name', async (req, res) => {
@@ -200,3 +225,19 @@ app.get('/r/:name', async (req, res) => {
   process.once("SIGINT", () => bot.stop("SIGINT"));
   process.once("SIGTERM", () => bot.stop("SIGTERM"));
 })();
+
+bot.action('stats', async (ctx) => {
+  try {
+    const s = await getStats();
+    const lines = s.clicksByName && s.clicksByName.length ? s.clicksByName.map(r => `- ${r.name}: ${r.c}`) : ['- ندارد'];
+    const text =
+      `کاربران: ${s.usersTotal}\n` +
+      `ورودی‌ها (/start): ${s.startsTotal}\n` +
+      `کلیک‌ها به تفکیک:\n` +
+      `${lines.join('\n')}`;
+    await ctx.reply(text);
+    await ctx.answerCbQuery();
+  } catch (e) {
+    await ctx.answerCbQuery('خطای گزارش');
+  }
+});
