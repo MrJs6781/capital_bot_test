@@ -11,4 +11,6 @@ const dbSsl = process.env.DATABASE_SSL === 'true'
 const superAdminId = process.env.SUPER_ADMIN_ID ? Number(process.env.SUPER_ADMIN_ID) : null
 const broadcastTickMs = process.env.BROADCAST_TICK_MS ? Number(process.env.BROADCAST_TICK_MS) : 30000
 const targets = { channel: channelUrl, signup: signupUrl, 'site-fa': siteFaUrl, rules: rulesUrl, support: supportUrl }
-module.exports = { port, channelUrl, signupUrl, siteFaUrl, rulesUrl, supportUrl, imageUrl, redirectBase, dbUrl, dbSsl, targets, superAdminId, broadcastTickMs }
+const timeZone = process.env.TIME_ZONE || 'Asia/Tehran'
+const reportDefaultPageSize = process.env.REPORT_PAGE_SIZE ? Number(process.env.REPORT_PAGE_SIZE) : 30
+module.exports = { port, channelUrl, signupUrl, siteFaUrl, rulesUrl, supportUrl, imageUrl, redirectBase, dbUrl, dbSsl, targets, superAdminId, broadcastTickMs, timeZone, reportDefaultPageSize }

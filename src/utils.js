@@ -27,6 +27,23 @@ function parseDateTime(s) {
   const dt = new Date(y, mo, d, h, mi, 0)
   return isNaN(dt.getTime()) ? null : dt
 }
+function zonedDate(y, mo, d, h, mi, tz) {
+  if (tz === 'Asia/Tehran') {
+    const offsetMinutes = 210
+    const total = h * 60 + mi - offsetMinutes
+    const base = Date.UTC(y, mo - 1, d, 0, 0, 0)
+    return new Date(base + total * 60000)
+  }
+  return new Date(y, mo - 1, d, h, mi, 0)
+}
+function parseDateTimeTz(s, tz) {
+  if (!s) return null
+  const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/)
+  if (!m) return null
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]), h = Number(m[4]), mi = Number(m[5])
+  const dt = zonedDate(y, mo, d, h, mi, tz)
+  return isNaN(dt.getTime()) ? null : dt
+}
 function formatReport(stats, all) {
   const clicksLines = (stats.clicksByName || []).map(r => `• ${r.name}: ${r.c}`)
   const summary =
@@ -52,4 +69,35 @@ function formatReport(stats, all) {
     `<pre>${eventsHeader}\n${eventsRows.length ? eventsRows.join('\n') : '—'}</pre>`
   return [summary, usersBlock, eventsBlock]
 }
-module.exports = { delay, makeUrl, chunkAndReply, formatReport, parseDateTime }
+function formatUsersPage(users, page, pageSize) {
+  const total = users.length
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const p = Math.min(Math.max(1, page), pages)
+  const start = (p - 1) * pageSize
+  const slice = users.slice(start, start + pageSize)
+  const rows = slice.map(u => {
+    const name = `${u.first_name || ''} ${u.last_name || ''}`.trim()
+    const user = u.username ? `@${u.username}` : '—'
+    const lang = u.language_code || '—'
+    const bot = u.is_bot ? 1 : 0
+    const created = fmtDate(u.created_at)
+    return `#${u.id} • ${user} • ${name || '—'} • زبان: ${lang} • ربات: ${bot} • ثبت: ${created}`
+  })
+  const footer = `— صفحه ${p} از ${pages}`
+  return [`<b>کاربران</b>\n${rows.length ? rows.join('\n') : '—'}\n${footer}`, { page: p, pages }]
+}
+function formatEventsPage(events, page, pageSize) {
+  const total = events.length
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const p = Math.min(Math.max(1, page), pages)
+  const start = (p - 1) * pageSize
+  const slice = events.slice(start, start + pageSize)
+  const rows = slice.map(e => {
+    const uid = e.user_id || '—'
+    const time = fmtDate(e.ts)
+    return `#${e.id} • کاربر: ${uid} • نوع: ${e.type} • نام: ${e.name} • زمان: ${time}`
+  })
+  const footer = `— صفحه ${p} از ${pages}`
+  return [`<b>رویدادها</b>\n${rows.length ? rows.join('\n') : '—'}\n${footer}`, { page: p, pages }]
+}
+module.exports = { delay, makeUrl, chunkAndReply, formatReport, parseDateTime, zonedDate, parseDateTimeTz, formatUsersPage, formatEventsPage }
