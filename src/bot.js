@@ -1,282 +1,483 @@
-const { Telegraf } = require('telegraf')
-const https = require('https')
-const { delay, makeUrl, chunkAndReply, formatReport, parseDateTime } = require('./utils')
+const { Telegraf } = require("telegraf");
+const https = require("https");
+const { delay, makeUrl, formatReport, parseDateTime } = require("./utils");
 function createBot(storage, config) {
-  const agent = new https.Agent({ family: 4 })
-  const bot = new Telegraf(process.env.BOT_TOKEN, { telegram: { agent } })
-  const sessions = new Map()
+  const agent = new https.Agent({ family: 4 });
+  const bot = new Telegraf(process.env.BOT_TOKEN, { telegram: { agent } });
+  const sessions = new Map();
   async function isSuper(ctx) {
-    if (config.superAdminId && ctx.from && ctx.from.id === config.superAdminId) return true
-    const role = await storage.getAdminRole(ctx.from.id)
-    return role === 'superadmin'
+    if (config.superAdminId && ctx.from && ctx.from.id === config.superAdminId)
+      return true;
+    const role = await storage.getAdminRole(ctx.from.id);
+    return role === "superadmin";
   }
   async function isAdmin(ctx) {
-    if (await isSuper(ctx)) return true
-    const role = await storage.getAdminRole(ctx.from.id)
-    return !!role
+    if (await isSuper(ctx)) return true;
+    const role = await storage.getAdminRole(ctx.from.id);
+    return !!role;
   }
   async function sendStart(ctx) {
-    await storage.upsertUser(ctx.from)
-    await storage.logEvent(ctx.from.id, 'start', 'start')
+    await storage.upsertUser(ctx.from);
+    await storage.logEvent(ctx.from.id, "start", "start");
     if (config.imageUrl) {
-      await ctx.replyWithPhoto(config.imageUrl)
-      await delay(500)
+      await ctx.replyWithPhoto(config.imageUrl);
+      await delay(500);
     }
+    const isAdm = await isAdmin(ctx);
+    const rows = [
+      [
+        {
+          text: "کانال رسمی",
+          url: makeUrl(config.redirectBase, "channel", ctx.from.id),
+        },
+      ],
+      [
+        {
+          text: "ثبت‌نام",
+          url: makeUrl(config.redirectBase, "signup", ctx.from.id),
+        },
+        {
+          text: "سایت فارسی",
+          url: makeUrl(config.redirectBase, "site-fa", ctx.from.id),
+        },
+      ],
+      [
+        {
+          text: "قوانین و شرایط",
+          url: makeUrl(config.redirectBase, "rules", ctx.from.id),
+        },
+        {
+          text: "پشتیبانی تلگرام",
+          url: makeUrl(config.redirectBase, "support", ctx.from.id),
+        },
+      ],
+    ];
+    if (isAdm) rows.push([{ text: "مشاهده گزارش", callback_data: "stats" }]);
     await ctx.reply(
       `👋 به ربات فارسی CapitalChin خوش آمدید
-خوشحالیم که به جامعه تریدرهای فارسی‌زبان CapitalChin  پیوستید.
-این ربات برای دسترسی سریع، پشتیبانی و اطلاع‌رسانی طراحی شده تا تجربه معاملاتی ساده‌تر و حرفه‌ای‌تری داشته باشید.
-
-🔹 در این ربات چه امکاناتی دارید؟
-📌 ثبت‌نام و شروع همکاری
-ایجاد حساب کاربری و شروع مسیر ترید
-
-📌 کانال اطلاع‌رسانی رسمی
-اخبار، آپدیت‌ها، تورنمنت‌ها و اطلاعیه‌های مهم
-🔗 کانال رسمی:
-👉 https://t.me/capitalchainfa`,
-      { reply_markup: { inline_keyboard: [[{ text: 'کانال رسمی', url: makeUrl(config.redirectBase, 'channel', ctx.from.id) }]] } }
-    )
-    await delay(700)
-    await ctx.reply(`🔗 لینک ثبت‌نام:\n👉 https://checkout.capitalchain.co`, {
-      reply_markup: { inline_keyboard: [[{ text: 'ثبت‌نام', url: makeUrl(config.redirectBase, 'signup', ctx.from.id) }]] }
-    })
-    await delay(700)
-    await ctx.reply(`📌 ورود به سایت فارسی کپیتال چین\n🔗 http://CapitalChain.co/farsi`, {
-      reply_markup: { inline_keyboard: [[{ text: 'سایت فارسی', url: makeUrl(config.redirectBase, 'site-fa', ctx.from.id) }]] }
-    })
-    await delay(700)
-    await ctx.reply(
-      `📌 قوانین و شرایط
-مطالعه قوانین، پلن‌ها و شرایط برداشت
-🔗 قوانین و مقررات:
-👉 https://capitalchain.co/terms-of-use`,
-      { reply_markup: { inline_keyboard: [[{ text: 'قوانین و شرایط', url: makeUrl(config.redirectBase, 'rules', ctx.from.id) }]] } }
-    )
-    await delay(700)
-    await ctx.reply(
-      `📌 پشتیبانی فارسی
-در صورت داشتن هرگونه سوال یا مشکل، با پشتیبانی در ارتباط باشید
-🔗 پشتیبانی تلگرام:
-👉 https://t.me/CapitalChainfarsi_support`,
-      { reply_markup: { inline_keyboard: [[{ text: 'پشتیبانی تلگرام', url: makeUrl(config.redirectBase, 'support', ctx.from.id) }]] } }
-    )
-    await delay(700)
-    await ctx.reply(`🧾 گزارش ساده`, { reply_markup: { inline_keyboard: [[{ text: 'مشاهده گزارش', callback_data: 'stats' }]] } })
-    await delay(500)
-    const isAdm = await isAdmin(ctx)
+برای دسترسی سریع به بخش‌های مختلف از دکمه‌های زیر استفاده کنید.`,
+      { reply_markup: { inline_keyboard: rows } },
+    );
     const kb = isAdm
-      ? [[{ text: 'شروع' }, { text: 'گزارش' }], [{ text: 'راهنما' }, { text: 'مدیریت' }]]
-      : [[{ text: 'شروع' }, { text: 'گزارش' }], [{ text: 'راهنما' }]]
-    await ctx.reply(`منوی اصلی`, { reply_markup: { keyboard: kb, resize_keyboard: true, one_time_keyboard: false } })
-    if (await isAdmin(ctx)) {
-      const isSup = await isSuper(ctx)
-      await ctx.reply('پنل مدیریت', {
-        reply_markup: { inline_keyboard: [[
-          { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
-          { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
-        ], [{ text: 'افزودن ادمین', callback_data: 'admin:add' }, { text: 'حذف ادمین', callback_data: 'admin:remove' }].concat(isSup ? [[{ text: 'افزودن سوپرادمین', callback_data: 'admin:addsuper' }]] : [])] }
-      })
-    }
+      ? [
+          [{ text: "شروع" }, { text: "گزارش" }],
+          [{ text: "راهنما" }, { text: "مدیریت" }],
+        ]
+      : [[{ text: "شروع" }], [{ text: "راهنما" }]];
+    await ctx.reply(`منوی اصلی`, {
+      reply_markup: {
+        keyboard: kb,
+        resize_keyboard: true,
+        one_time_keyboard: false,
+      },
+    });
   }
   async function replyFull(ctx) {
-    const s = await storage.getStats()
-    const all = await storage.getAllData()
-    const messages = formatReport(s, all)
+    const s = await storage.getStats();
+    const all = await storage.getAllData();
+    const messages = formatReport(s, all);
     for (const m of messages) {
-      await ctx.reply(m, { parse_mode: 'HTML' })
+      await ctx.reply(m, { parse_mode: "HTML" });
     }
   }
   async function previewRecipients(filters) {
-    const ids = await storage.getRecipients(filters)
-    return { count: ids.length, ids }
+    const ids = await storage.getRecipients(filters);
+    return { count: ids.length, ids };
   }
   async function sendBroadcastNow(text, filters, creatorId) {
-    const ids = await storage.getRecipients(filters)
-    const { id } = await storage.createBroadcast({ creator_id: creatorId, text, filters, status: 'pending' })
+    const ids = await storage.getRecipients(filters);
+    const { id } = await storage.createBroadcast({
+      creator_id: creatorId,
+      text,
+      filters,
+      status: "pending",
+    });
     for (const uid of ids) {
-      try { await bot.telegram.sendMessage(uid, text) } catch {}
-      await delay(30)
+      try {
+        await bot.telegram.sendMessage(uid, text);
+      } catch {}
+      await delay(30);
     }
-    await storage.markBroadcastSent(id)
-    return ids.length
+    await storage.markBroadcastSent(id);
+    return ids.length;
   }
-  bot.start(async (ctx) => { try { await sendStart(ctx) } catch {} })
-  bot.action('stats', async (ctx) => { try { await replyFull(ctx); await ctx.answerCbQuery() } catch { await ctx.answerCbQuery('خطای گزارش') } })
-  bot.command('stats', async (ctx) => { try { await replyFull(ctx) } catch { await ctx.reply('خطا در گزارش') } })
-  bot.command('help', async (ctx) => {
-    const t = `دستورات:\n/start شروع\n/stats گزارش کامل\n/help راهنما`
-    await ctx.reply(t)
-  })
-  bot.hears('گزارش', async (ctx) => { try { await replyFull(ctx) } catch {} })
-  bot.hears('شروع', async (ctx) => { try { await sendStart(ctx) } catch {} })
-  bot.hears('راهنما', async (ctx) => { const t = `دستورات:\n/start شروع\n/stats گزارش کامل\n/help راهنما`; await ctx.reply(t) })
-  bot.hears('مدیریت', async (ctx) => {
-    if (!(await isAdmin(ctx))) return
-    const isSup = await isSuper(ctx)
-    const rows = [[
-      { text: 'ارسال اعلان', callback_data: 'admin:broadcast' },
-      { text: 'فهرست ادمین‌ها', callback_data: 'admin:list' }
-    ], [{ text: 'افزودن ادمین', callback_data: 'admin:add' }, { text: 'حذف ادمین', callback_data: 'admin:remove' }]]
-    if (isSup) rows.push([{ text: 'افزودن سوپرادمین', callback_data: 'admin:addsuper' }])
-    await ctx.reply('پنل مدیریت', { reply_markup: { inline_keyboard: rows } })
-  })
-  bot.command('admin', async (ctx) => {
-    if (!(await isSuper(ctx))) return
-    const parts = (ctx.message.text || '').trim().split(/\s+/)
-    const cmd = parts[1]
-    if (cmd === 'add' && parts[2]) {
-      const role = parts[3] || 'admin'
-      const token = parts[2]
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
-      await storage.addAdmin(uid, role)
-      await ctx.reply(`ادمین اضافه شد: ${uid} نقش: ${role}`)
-      return
+  bot.start(async (ctx) => {
+    try {
+      await sendStart(ctx);
+    } catch {}
+  });
+  bot.action("stats", async (ctx) => {
+    try {
+      if (!(await isAdmin(ctx))) {
+        await ctx.answerCbQuery("دسترسی ندارید");
+        return;
+      }
+      await replyFull(ctx);
+      await ctx.answerCbQuery();
+    } catch {
+      await ctx.answerCbQuery("خطای گزارش");
     }
-    if (cmd === 'remove' && parts[2]) {
-      const token = parts[2]
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
-      await storage.removeAdmin(uid)
-      await ctx.reply(`ادمین حذف شد: ${uid}`)
-      return
+  });
+  bot.command("stats", async (ctx) => {
+    try {
+      if (!(await isAdmin(ctx))) {
+        await ctx.reply("دسترسی ندارید");
+        return;
+      }
+      await replyFull(ctx);
+    } catch {
+      await ctx.reply("خطا در گزارش");
     }
-    if (cmd === 'setrole' && parts[2] && parts[3]) {
-      const token = parts[2]
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
-      const role = parts[3]
-      await storage.addAdmin(uid, role)
-      await ctx.reply(`نقش بروزرسانی شد: ${uid} => ${role}`)
-      return
+  });
+  bot.command("help", async (ctx) => {
+    const t = `دستورات:\n/start شروع\n/stats گزارش کامل\n/help راهنما`;
+    await ctx.reply(t);
+  });
+  bot.hears("گزارش", async (ctx) => {
+    try {
+      if (!(await isAdmin(ctx))) return;
+      await replyFull(ctx);
+    } catch {}
+  });
+  bot.hears("شروع", async (ctx) => {
+    try {
+      await sendStart(ctx);
+    } catch {}
+  });
+  bot.hears("راهنما", async (ctx) => {
+    const t = `دستورات:\n/start شروع\n/stats گزارش کامل\n/help راهنما`;
+    await ctx.reply(t);
+  });
+  bot.hears("مدیریت", async (ctx) => {
+    if (!(await isAdmin(ctx))) return;
+    const isSup = await isSuper(ctx);
+    const rows = [
+      [
+        { text: "ارسال اعلان", callback_data: "admin:broadcast" },
+        { text: "فهرست ادمین‌ها", callback_data: "admin:list" },
+      ],
+      [
+        { text: "افزودن ادمین", callback_data: "admin:add" },
+        { text: "حذف ادمین", callback_data: "admin:remove" },
+      ],
+    ];
+    if (isSup)
+      rows.push([
+        { text: "افزودن سوپرادمین", callback_data: "admin:addsuper" },
+      ]);
+    await ctx.reply("پنل مدیریت", { reply_markup: { inline_keyboard: rows } });
+  });
+  bot.command("admin", async (ctx) => {
+    if (!(await isSuper(ctx))) return;
+    const parts = (ctx.message.text || "").trim().split(/\s+/);
+    const cmd = parts[1];
+    if (cmd === "add" && parts[2]) {
+      const role = parts[3] || "admin";
+      const token = parts[2];
+      const uid = /^\d+$/.test(token)
+        ? Number(token)
+        : await storage.resolveUserIdByUsername(token);
+      if (!uid) {
+        await ctx.reply(
+          "کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید",
+        );
+        return;
+      }
+      await storage.addAdmin(uid, role);
+      await ctx.reply(`ادمین اضافه شد: ${uid} نقش: ${role}`);
+      return;
     }
-    if (cmd === 'list') {
-      const list = await storage.listAdmins()
-      const lines = list.map(a => `${a.user_id} ${a.role}`)
-      await ctx.reply(lines.length ? lines.join('\n') : 'فهرست خالی است')
-      return
+    if (cmd === "remove" && parts[2]) {
+      const token = parts[2];
+      const uid = /^\d+$/.test(token)
+        ? Number(token)
+        : await storage.resolveUserIdByUsername(token);
+      if (!uid) {
+        await ctx.reply(
+          "کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید",
+        );
+        return;
+      }
+      await storage.removeAdmin(uid);
+      await ctx.reply(`ادمین حذف شد: ${uid}`);
+      return;
     }
-    await ctx.reply(`دستورات مدیریت:\n/admin add <user_id> [role]\n/admin remove <user_id>\n/admin setrole <user_id> <role>\n/admin list`)
-  })
-  bot.action('admin:broadcast', async (ctx) => {
-    if (!(await isAdmin(ctx))) { await ctx.answerCbQuery(); return }
-    sessions.set(ctx.from.id, { step: 'text' })
-    await ctx.reply('متن پیام را ارسال کنید')
-    await ctx.answerCbQuery('شروع ارسال انبوه')
-  })
-  bot.action('admin:list', async (ctx) => {
-    if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
-    const list = await storage.listAdmins()
-    const lines = list.map(a => `${a.user_id} ${a.role}`)
-    await ctx.reply(lines.length ? lines.join('\n') : 'فهرست خالی است')
-    await ctx.answerCbQuery('فهرست ادمین‌ها')
-  })
-  bot.action('admin:add', async (ctx) => {
-    if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
-    sessions.set(ctx.from.id, { step: 'add_admin_id', role: 'admin' })
-    await ctx.reply('شناسه عددی یا یوزرنیم کاربر را وارد کنید (مثال: 123456 یا @username)')
-    await ctx.answerCbQuery('افزودن ادمین')
-  })
-  bot.action('admin:addsuper', async (ctx) => {
-    if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
-    sessions.set(ctx.from.id, { step: 'add_admin_id', role: 'superadmin' })
-    await ctx.reply('شناسه عددی یا یوزرنیم سوپرادمین را وارد کنید (مثال: 123456 یا @username)')
-    await ctx.answerCbQuery('افزودن سوپرادمین')
-  })
-  bot.action('admin:remove', async (ctx) => {
-    if (!(await isSuper(ctx))) { await ctx.answerCbQuery(); return }
-    sessions.set(ctx.from.id, { step: 'remove_admin_id' })
-    await ctx.reply('شناسه عددی یا یوزرنیم ادمین را برای حذف وارد کنید')
-    await ctx.answerCbQuery('حذف ادمین')
-  })
-  bot.command('broadcast', async (ctx) => {
-    if (!(await isAdmin(ctx))) return
-    sessions.set(ctx.from.id, { step: 'text' })
-    await ctx.reply('متن پیام را ارسال کنید')
-  })
-  bot.on('text', async (ctx) => {
-    const s = sessions.get(ctx.from.id)
-    if (!s) return
-    if (s.step === 'add_admin_id') {
-      const token = (ctx.message.text || '').trim()
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
-      await storage.addAdmin(uid, s.role || 'admin')
-      sessions.delete(ctx.from.id)
-      await ctx.reply(s.role === 'superadmin' ? 'سوپرادمین اضافه شد' : 'ادمین اضافه شد')
-      return
+    if (cmd === "setrole" && parts[2] && parts[3]) {
+      const token = parts[2];
+      const uid = /^\d+$/.test(token)
+        ? Number(token)
+        : await storage.resolveUserIdByUsername(token);
+      if (!uid) {
+        await ctx.reply(
+          "کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید",
+        );
+        return;
+      }
+      const role = parts[3];
+      await storage.addAdmin(uid, role);
+      await ctx.reply(`نقش بروزرسانی شد: ${uid} => ${role}`);
+      return;
     }
-    if (s.step === 'remove_admin_id') {
-      const token = (ctx.message.text || '').trim()
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) { await ctx.reply('کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید'); return }
-      await storage.removeAdmin(uid)
-      sessions.delete(ctx.from.id)
-      await ctx.reply('ادمین حذف شد')
-      return
+    if (cmd === "list") {
+      const list = await storage.listAdmins();
+      const lines = list.map((a) => `${a.user_id} ${a.role}`);
+      await ctx.reply(lines.length ? lines.join("\n") : "فهرست خالی است");
+      return;
     }
-    if (s.step === 'text') {
-      s.text = ctx.message.text
-      s.step = 'filter'
-      await ctx.reply('فیلتر مخاطبان را انتخاب کنید', {
-        reply_markup: { inline_keyboard: [[
-          { text: 'همه', callback_data: 'filter:all' },
-          { text: 'فارسی', callback_data: 'filter:fa' },
-          { text: 'انگلیسی', callback_data: 'filter:en' },
-          { text: 'ثبت‌نام', callback_data: 'filter:signup' }
-        ]] }
-      })
-      return
+    await ctx.reply(
+      `دستورات مدیریت:\n/admin add <user_id> [role]\n/admin remove <user_id>\n/admin setrole <user_id> <role>\n/admin list`,
+    );
+  });
+  bot.action("admin:broadcast", async (ctx) => {
+    if (!(await isAdmin(ctx))) {
+      await ctx.answerCbQuery();
+      return;
     }
-    if (s.step === 'schedule') {
-      const dt = parseDateTime(ctx.message.text)
-      if (!dt) { await ctx.reply('فرمت زمان نامعتبر است. نمونه: 2026-02-15 21:30'); return }
-      const filters = s.filters || {}
-      const { id } = await storage.createBroadcast({ creator_id: ctx.from.id, text: s.text, filters, status: 'scheduled', scheduled_at: dt.toISOString() })
-      sessions.delete(ctx.from.id)
-      await ctx.reply(`زمان‌بندی شد: #${id} در ${dt.toLocaleString('fa-IR', { timeZone: 'Asia/Tehran', hour12: false })}`)
-      return
+    sessions.set(ctx.from.id, { step: "text" });
+    await ctx.reply("متن پیام را ارسال کنید");
+    await ctx.answerCbQuery("شروع ارسال انبوه");
+  });
+  bot.action("admin:list", async (ctx) => {
+    if (!(await isSuper(ctx))) {
+      await ctx.answerCbQuery();
+      return;
     }
-  })
+    const list = await storage.listAdmins();
+    const lines = list.map((a) => `${a.user_id} ${a.role}`);
+    await ctx.reply(lines.length ? lines.join("\n") : "فهرست خالی است");
+    await ctx.answerCbQuery("فهرست ادمین‌ها");
+  });
+  bot.action("admin:add", async (ctx) => {
+    if (!(await isSuper(ctx))) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    sessions.set(ctx.from.id, { step: "add_admin_id", role: "admin" });
+    await ctx.reply(
+      "شناسه عددی یا یوزرنیم کاربر را وارد کنید (مثال: 123456 یا @username)",
+    );
+    await ctx.answerCbQuery("افزودن ادمین");
+  });
+  bot.action("admin:addsuper", async (ctx) => {
+    if (!(await isSuper(ctx))) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    sessions.set(ctx.from.id, { step: "add_admin_id", role: "superadmin" });
+    await ctx.reply(
+      "شناسه عددی یا یوزرنیم سوپرادمین را وارد کنید (مثال: 123456 یا @username)",
+    );
+    await ctx.answerCbQuery("افزودن سوپرادمین");
+  });
+  bot.action("admin:remove", async (ctx) => {
+    if (!(await isSuper(ctx))) {
+      await ctx.answerCbQuery();
+      return;
+    }
+    sessions.set(ctx.from.id, { step: "remove_admin_id" });
+    await ctx.reply("شناسه عددی یا یوزرنیم ادمین را برای حذف وارد کنید");
+    await ctx.answerCbQuery("حذف ادمین");
+  });
+  bot.command("broadcast", async (ctx) => {
+    if (!(await isAdmin(ctx))) return;
+    sessions.set(ctx.from.id, { step: "text" });
+    await ctx.reply("متن پیام را ارسال کنید");
+  });
+  bot.on("text", async (ctx) => {
+    const s = sessions.get(ctx.from.id);
+    if (!s) return;
+    if (s.step === "add_admin_id") {
+      const token = (ctx.message.text || "").trim();
+      const uid = /^\d+$/.test(token)
+        ? Number(token)
+        : await storage.resolveUserIdByUsername(token);
+      if (!uid) {
+        await ctx.reply(
+          "کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید",
+        );
+        return;
+      }
+      await storage.addAdmin(uid, s.role || "admin");
+      sessions.delete(ctx.from.id);
+      await ctx.reply(
+        s.role === "superadmin" ? "سوپرادمین اضافه شد" : "ادمین اضافه شد",
+      );
+      return;
+    }
+    if (s.step === "remove_admin_id") {
+      const token = (ctx.message.text || "").trim();
+      const uid = /^\d+$/.test(token)
+        ? Number(token)
+        : await storage.resolveUserIdByUsername(token);
+      if (!uid) {
+        await ctx.reply(
+          "کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید",
+        );
+        return;
+      }
+      await storage.removeAdmin(uid);
+      sessions.delete(ctx.from.id);
+      await ctx.reply("ادمین حذف شد");
+      return;
+    }
+    if (s.step === "text") {
+      s.text = ctx.message.text;
+      s.step = "filter";
+      await ctx.reply("فیلتر مخاطبان را انتخاب کنید", {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "همه", callback_data: "filter:all" },
+              { text: "فارسی", callback_data: "filter:fa" },
+              { text: "انگلیسی", callback_data: "filter:en" },
+              { text: "ثبت‌نام", callback_data: "filter:signup" },
+            ],
+          ],
+        },
+      });
+      return;
+    }
+    if (s.step === "schedule") {
+      const dt = parseDateTime(ctx.message.text);
+      if (!dt) {
+        await ctx.reply("فرمت زمان نامعتبر است. نمونه: 2026-02-15 21:30");
+        return;
+      }
+      const filters = s.filters || {};
+      const { id } = await storage.createBroadcast({
+        creator_id: ctx.from.id,
+        text: s.text,
+        filters,
+        status: "scheduled",
+        scheduled_at: dt.toISOString(),
+      });
+      sessions.delete(ctx.from.id);
+      await ctx.reply(
+        `زمان‌بندی شد: #${id} در ${dt.toLocaleString("fa-IR", { timeZone: "Asia/Tehran", hour12: false })}`,
+      );
+      return;
+    }
+  });
   bot.action(/filter:(.+)/, async (ctx) => {
-    const s = sessions.get(ctx.from.id)
-    if (!s) return
-    const key = ctx.match[1]
-    const filters = {}
-    if (key === 'fa') filters.lang = 'fa'
-    else if (key === 'en') filters.lang = 'en'
-    else if (key === 'signup') filters.event = 'signup'
-    s.filters = filters
-    const pr = await previewRecipients(filters)
+    const s = sessions.get(ctx.from.id);
+    if (!s) return;
+    const key = ctx.match[1];
+    const filters = {};
+    if (key === "fa") filters.lang = "fa";
+    else if (key === "en") filters.lang = "en";
+    else if (key === "signup") filters.event = "signup";
+    s.filters = filters;
+    const pr = await previewRecipients(filters);
     await ctx.reply(`پیش‌نمایش:\nگیرندگان: ${pr.count}\n\n${s.text}`, {
-      reply_markup: { inline_keyboard: [[
-        { text: 'ارسال اکنون', callback_data: 'send:now' },
-        { text: 'زمان‌بندی', callback_data: 'send:schedule' },
-        { text: 'انصراف', callback_data: 'send:cancel' }
-      ]] }
-    })
-    await ctx.answerCbQuery()
-  })
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "ارسال اکنون", callback_data: "send:now" },
+            { text: "زمان‌بندی", callback_data: "send:schedule" },
+            { text: "انصراف", callback_data: "send:cancel" },
+          ],
+        ],
+      },
+    });
+    await ctx.answerCbQuery();
+  });
   bot.action(/send:(.+)/, async (ctx) => {
-    const s = sessions.get(ctx.from.id)
-    if (!s) return
-    const act = ctx.match[1]
-    if (act === 'cancel') { sessions.delete(ctx.from.id); await ctx.reply('لغو شد'); await ctx.answerCbQuery(); return }
-    if (act === 'now') {
-      const sent = await sendBroadcastNow(s.text, s.filters || {}, ctx.from.id)
-      sessions.delete(ctx.from.id)
-      await ctx.reply(`ارسال شد به ${sent} مخاطب`)
-      await ctx.answerCbQuery()
-      return
+    const s = sessions.get(ctx.from.id);
+    if (!s) return;
+    const act = ctx.match[1];
+    if (act === "cancel") {
+      sessions.delete(ctx.from.id);
+      await ctx.reply("لغو شد");
+      await ctx.answerCbQuery();
+      return;
     }
-    if (act === 'schedule') {
-      s.step = 'schedule'
-      await ctx.reply('زمان ارسال را وارد کنید. نمونه: 2026-02-15 21:30')
-      await ctx.answerCbQuery()
-      return
+    if (act === "now") {
+      const sent = await sendBroadcastNow(s.text, s.filters || {}, ctx.from.id);
+      sessions.delete(ctx.from.id);
+      await ctx.reply(`ارسال شد به ${sent} مخاطب`);
+      await ctx.answerCbQuery();
+      return;
     }
-  })
-  return bot
+    if (act === "schedule") {
+      s.step = "schedule_date";
+      const today = new Date();
+      const days = [];
+      for (let i = 0; i < 14; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+        const y = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, "0");
+        const da = String(d.getDate()).padStart(2, "0");
+        const key = `${y}-${mo}-${da}`;
+        const names = ["یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه"];
+        const lab = `${i === 0 ? "امروز" : i === 1 ? "فردا" : names[d.getDay()]} ${da}/${mo}`;
+        days.push({ key, lab });
+      }
+      const rows = [];
+      for (let i = 0; i < days.length; i += 2) {
+        const r = [];
+        r.push({ text: days[i].lab, callback_data: `pickdate:${days[i].key}` });
+        if (days[i + 1]) r.push({ text: days[i + 1].lab, callback_data: `pickdate:${days[i + 1].key}` });
+        rows.push(r);
+      }
+      await ctx.reply("تاریخ ارسال را انتخاب کنید", { reply_markup: { inline_keyboard: rows } });
+      await ctx.answerCbQuery();
+      return;
+    }
+  });
+  bot.action(/pickdate:(\d{4}-\d{2}-\d{2})/, async (ctx) => {
+    const s = sessions.get(ctx.from.id);
+    if (!s) return;
+    s.sched = s.sched || {};
+    s.sched.date = ctx.match[1];
+    s.step = "schedule_hour";
+    const rows = [];
+    for (let h = 0; h < 24; h += 6) {
+      const r = [];
+      for (let k = h; k < h + 6; k++) {
+        r.push({ text: String(k).padStart(2, "0"), callback_data: `pickhour:${String(k).padStart(2, "0")}` });
+      }
+      rows.push(r);
+    }
+    await ctx.reply("ساعت را انتخاب کنید", { reply_markup: { inline_keyboard: rows } });
+    await ctx.answerCbQuery();
+  });
+  bot.action(/pickhour:(\d{2})/, async (ctx) => {
+    const s = sessions.get(ctx.from.id);
+    if (!s) return;
+    s.sched = s.sched || {};
+    s.sched.hour = ctx.match[1];
+    s.step = "schedule_minute";
+    const rows = [[
+      { text: "00", callback_data: "pickminute:00" },
+      { text: "15", callback_data: "pickminute:15" },
+      { text: "30", callback_data: "pickminute:30" },
+      { text: "45", callback_data: "pickminute:45" }
+    ]];
+    await ctx.reply("دقیقه را انتخاب کنید", { reply_markup: { inline_keyboard: rows } });
+    await ctx.answerCbQuery();
+  });
+  bot.action(/pickminute:(\d{2})/, async (ctx) => {
+    const s = sessions.get(ctx.from.id);
+    if (!s) return;
+    s.sched = s.sched || {};
+    s.sched.minute = ctx.match[1];
+    const [y, mo, da] = s.sched.date.split("-").map((x) => Number(x));
+    const h = Number(s.sched.hour);
+    const mi = Number(s.sched.minute);
+    const dt = new Date(y, mo - 1, da, h, mi, 0);
+    const { id } = await storage.createBroadcast({
+      creator_id: ctx.from.id,
+      text: s.text,
+      filters: s.filters || {},
+      status: "scheduled",
+      scheduled_at: dt.toISOString(),
+    });
+    sessions.delete(ctx.from.id);
+    await ctx.reply(
+      `زمان‌بندی شد: #${id} در ${dt.toLocaleString("fa-IR", { timeZone: "Asia/Tehran", hour12: false })}`,
+    );
+    await ctx.answerCbQuery();
+  });
+  return bot;
 }
-module.exports = { createBot }
+module.exports = { createBot };
