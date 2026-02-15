@@ -84,9 +84,9 @@ function formatUsersPage(users, page, pageSize) {
     return `#${u.id} • ${user} • ${name || '—'} • زبان: ${lang} • ربات: ${bot} • ثبت: ${created}`
   })
   const footer = `— صفحه ${p} از ${pages}`
-  return [`<b>کاربران</b>\n${rows.length ? rows.join('\n') : '—'}\n${footer}`, { page: p, pages }]
+  return [`<b>کاربران</b>\n${rows.length ? rows.join('\n\n') : '—'}\n${footer}`, { page: p, pages }]
 }
-function formatEventsPage(events, page, pageSize) {
+function formatEventsPage(events, usersById, page, pageSize) {
   const total = events.length
   const pages = Math.max(1, Math.ceil(total / pageSize))
   const p = Math.min(Math.max(1, page), pages)
@@ -94,10 +94,14 @@ function formatEventsPage(events, page, pageSize) {
   const slice = events.slice(start, start + pageSize)
   const rows = slice.map(e => {
     const uid = e.user_id || '—'
+    const u = (usersById || {})[uid]
+    const uname = u && u.username ? `@${u.username}` : null
+    const fname = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() : null
+    const extra = [uname, fname && fname.length ? fname : null].filter(Boolean).join(' • ')
     const time = fmtDate(e.ts)
-    return `#${e.id} • کاربر: ${uid} • نوع: ${e.type} • نام: ${e.name} • زمان: ${time}`
+    return `#${e.id} • کاربر: ${uid}${extra ? ` • ${extra}` : ''} • نوع: ${e.type} • نام: ${e.name} • زمان: ${time}`
   })
   const footer = `— صفحه ${p} از ${pages}`
-  return [`<b>رویدادها</b>\n${rows.length ? rows.join('\n') : '—'}\n${footer}`, { page: p, pages }]
+  return [`<b>رویدادها</b>\n${rows.length ? rows.join('\n\n') : '—'}\n${footer}`, { page: p, pages }]
 }
 module.exports = { delay, makeUrl, chunkAndReply, formatReport, parseDateTime, zonedDate, parseDateTimeTz, formatUsersPage, formatEventsPage }
