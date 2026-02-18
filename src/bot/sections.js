@@ -113,12 +113,13 @@ function registerSections(bot, storage, config, sessions, helpers) {
       await storage.logEvent(ctx.from.id, "open", name)
     } catch {}
     const tracked = makeUrl(config.redirectBase, name, ctx.from.id)
+    const linkUrl = tracked || info.url
     const text =
       `${info.title}\n` +
       `${info.text}\n` +
       `\nلینک: ${info.url}`
     const rows = [
-      [{ text: info.btn, url: tracked }],
+      [{ text: info.btn, url: linkUrl }],
       [{ text: "بازگشت به منوی اصلی", callback_data: "menu:home" }],
     ]
     await ctx.reply(text, { reply_markup: { inline_keyboard: rows } })

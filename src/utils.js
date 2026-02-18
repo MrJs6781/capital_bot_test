@@ -2,6 +2,9 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 function makeUrl(redirectBase, name, uid) {
+  if (!redirectBase) return null
+  const host = redirectBase.replace(/^https?:\/\//, "")
+  if (/^localhost(?::\d+)?$/.test(host)) return null
   return `${redirectBase}/r/${name}?uid=${uid}`
 }
 async function chunkAndReply(ctx, text, opts = {}) {
