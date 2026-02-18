@@ -21,6 +21,7 @@ let listScheduledBroadcasts = async () => []
 let getBroadcast = async () => null
 let updateBroadcastText = async () => false
 let updateBroadcastSchedule = async () => false
+let deleteScheduledBroadcast = async () => false
 if (usePg) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -210,6 +211,12 @@ if (usePg) {
     )
     return r.rowCount > 0
   }
+  deleteScheduledBroadcast = async function(id) {
+    const r = await pool.query(
+      `DELETE FROM broadcasts WHERE id=$1 AND status='scheduled'`, [id]
+    )
+    return r.rowCount > 0
+  }
 } else {
   const DB_FILE = path.join(process.cwd(), 'analytics.json')
   if (!fs.existsSync(DB_FILE)) {
@@ -371,5 +378,12 @@ if (usePg) {
     writeStore(s)
     return true
   }
+  deleteScheduledBroadcast = async function(id) {
+    const s = readStore()
+    const before = s.broadcasts.length
+    s.broadcasts = (s.broadcasts || []).filter(b => !(b.id === Number(id) && b.status === 'scheduled'))
+    writeStore(s)
+    return s.broadcasts.length < before
+  }
 }
-module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg, addAdmin, removeAdmin, listAdmins, getAdminRole, getRecipients, createBroadcast, listDueBroadcasts, markBroadcastSent, resolveUserIdByUsername, resetDatabase, listScheduledBroadcasts, getBroadcast, updateBroadcastText, updateBroadcastSchedule }
+module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg, addAdmin, removeAdmin, listAdmins, getAdminRole, getRecipients, createBroadcast, listDueBroadcasts, markBroadcastSent, resolveUserIdByUsername, resetDatabase, listScheduledBroadcasts, getBroadcast, updateBroadcastText, updateBroadcastSchedule, deleteScheduledBroadcast }

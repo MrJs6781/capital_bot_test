@@ -51,33 +51,33 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     if (cmd === "add" && parts[2]) {
       const role = parts[3] || "admin"
       const token = parts[2]
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) {
-        await ctx.reply("کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید")
+      if (!/^\d+$/.test(token)) {
+        await ctx.reply("فقط شناسه عددی کاربر معتبر است (مثال: 123456789).")
         return
       }
+      const uid = Number(token)
       await storage.addAdmin(uid, role)
       await ctx.reply(`ادمین اضافه شد: ${uid} نقش: ${role}`)
       return
     }
     if (cmd === "remove" && parts[2]) {
       const token = parts[2]
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) {
-        await ctx.reply("کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید")
+      if (!/^\d+$/.test(token)) {
+        await ctx.reply("فقط شناسه عددی کاربر معتبر است (مثال: 123456789).")
         return
       }
+      const uid = Number(token)
       await storage.removeAdmin(uid)
       await ctx.reply(`ادمین حذف شد: ${uid}`)
       return
     }
     if (cmd === "setrole" && parts[2] && parts[3]) {
       const token = parts[2]
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) {
-        await ctx.reply("کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید")
+      if (!/^\d+$/.test(token)) {
+        await ctx.reply("فقط شناسه عددی کاربر معتبر است (مثال: 123456789).")
         return
       }
+      const uid = Number(token)
       const role = parts[3]
       await storage.addAdmin(uid, role)
       await ctx.reply(`نقش بروزرسانی شد: ${uid} => ${role}`)
@@ -104,7 +104,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     )
   })
   bot.action("admin:broadcast", async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "broadcast"))) {
       await ctx.answerCbQuery()
       return
     }
@@ -128,7 +128,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
       return
     }
     sessions.set(ctx.from.id, { step: "add_admin_id", role: "admin" })
-    await ctx.reply("شناسه عددی یا یوزرنیم کاربر را وارد کنید (مثال: 123456 یا @username)")
+    await ctx.reply("شناسه عددی کاربر را وارد کنید (فقط عدد، مثال: 123456789)")
     await ctx.answerCbQuery("افزودن ادمین")
   })
   bot.action("admin:addsuper", async (ctx) => {
@@ -137,7 +137,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
       return
     }
     sessions.set(ctx.from.id, { step: "add_admin_id", role: "superadmin" })
-    await ctx.reply("شناسه عددی یا یوزرنیم سوپرادمین را وارد کنید (مثال: 123456 یا @username)")
+    await ctx.reply("شناسه عددی سوپرادمین را وارد کنید (فقط عدد، مثال: 123456789)")
     await ctx.answerCbQuery("افزودن سوپرادمین")
   })
   bot.action("admin:setrole", async (ctx) => {
@@ -146,7 +146,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
       return
     }
     sessions.set(ctx.from.id, { step: "setrole_target" })
-    await ctx.reply("شناسه عددی یا یوزرنیم کاربر را برای تغییر نقش وارد کنید")
+    await ctx.reply("شناسه عددی کاربر را برای تغییر نقش وارد کنید (فقط عدد)")
     await ctx.answerCbQuery("تغییر نقش")
   })
   bot.action("admin:remove", async (ctx) => {
@@ -155,7 +155,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
       return
     }
     sessions.set(ctx.from.id, { step: "remove_admin_id" })
-    await ctx.reply("شناسه عددی یا یوزرنیم ادمین را برای حذف وارد کنید")
+    await ctx.reply("شناسه عددی ادمین را برای حذف وارد کنید (فقط عدد)")
     await ctx.answerCbQuery("حذف ادمین")
   })
   bot.action("admin:reset", async (ctx) => {
@@ -192,7 +192,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     await ctx.answerCbQuery("ریست شد")
   })
   bot.action(/sched:list:(\d+)/, async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "schedule"))) {
       await ctx.answerCbQuery()
       return
     }
@@ -215,7 +215,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     await ctx.answerCbQuery()
   })
   bot.action(/sched:open:(\d+):(\d+)/, async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "schedule"))) {
       await ctx.answerCbQuery()
       return
     }
@@ -234,6 +234,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
           [
             { text: "تغییر متن", callback_data: `sched:edittext:${id}:${page}` },
             { text: "تغییر زمان", callback_data: `sched:edittime:${id}:${page}` },
+            { text: "حذف زمان‌بندی", callback_data: `sched:delete:${id}:${page}` },
           ],
           [{ text: "بازگشت", callback_data: `sched:list:${page}` }],
         ],
@@ -242,7 +243,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     await ctx.answerCbQuery()
   })
   bot.action(/sched:edittext:(\d+):(\d+)/, async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "schedule"))) {
       await ctx.answerCbQuery()
       return
     }
@@ -253,7 +254,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     await ctx.answerCbQuery()
   })
   bot.action(/sched:edittime:(\d+):(\d+)/, async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "schedule"))) {
       await ctx.answerCbQuery()
       return
     }
@@ -283,8 +284,53 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     await ctx.reply("تاریخ جدید را انتخاب کنید", { reply_markup: { inline_keyboard: rows } })
     await ctx.answerCbQuery()
   })
+  bot.action(/sched:delete:(\d+):(\d+)/, async (ctx) => {
+    if (!(await helpers.can(ctx, "schedule"))) {
+      await ctx.answerCbQuery()
+      return
+    }
+    const id = Number(ctx.match[1])
+    const page = Number(ctx.match[2]) || 1
+    await ctx.reply(`حذف زمان‌بندی #${id}؟`, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "تایید حذف", callback_data: `sched:delete:confirm:${id}:${page}` },
+            { text: "انصراف", callback_data: `sched:open:${id}:${page}` },
+          ],
+        ],
+      },
+    })
+    await ctx.answerCbQuery()
+  })
+  bot.action(/sched:delete:confirm:(\d+):(\d+)/, async (ctx) => {
+    if (!(await helpers.can(ctx, "schedule"))) {
+      await ctx.answerCbQuery()
+      return
+    }
+    const id = Number(ctx.match[1])
+    const page = Number(ctx.match[2]) || 1
+    const ok = await storage.deleteScheduledBroadcast(id)
+    await ctx.reply(ok ? "حذف شد" : "حذف ممکن نیست (شاید ارسال شده باشد)")
+    await ctx.answerCbQuery()
+    const pageSize = 10
+    const offset = (page - 1) * pageSize
+    const items = await storage.listScheduledBroadcasts(pageSize, offset)
+    const rows = items.map((b) => {
+      const when = b.scheduled_at ? new Date(b.scheduled_at).toLocaleString("fa-IR", { timeZone: config.timeZone, hour12: false }) : "—"
+      const preview = (b.text || "").slice(0, 20).replace(/\n/g, " ")
+      return [{ text: `#${b.id} • ${when} • ${preview}`, callback_data: `sched:open:${b.id}:${page}` }]
+    })
+    const nav = [
+      { text: page > 1 ? "قبلی" : "—", callback_data: `sched:list:${Math.max(1, page - 1)}` },
+      { text: items.length === pageSize ? "بعدی" : "—", callback_data: `sched:list:${page + 1}` },
+    ]
+    rows.push(nav)
+    rows.push([{ text: "بازگشت", callback_data: "admin:broadcast" }])
+    await ctx.reply("فهرست زمان‌بندی‌ها", { reply_markup: { inline_keyboard: rows } })
+  })
   bot.command("broadcast", async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) return
+    if (!(await helpers.can(ctx, "broadcast"))) return
     sessions.set(ctx.from.id, { step: "text" })
     await ctx.reply("متن پیام را ارسال کنید")
   })
@@ -293,11 +339,11 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     if (!s) return
     if (s.step === "add_admin_id") {
       const token = (ctx.message.text || "").trim()
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) {
-        await ctx.reply("کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید")
+      if (!/^\d+$/.test(token)) {
+        await ctx.reply("فقط شناسه عددی معتبر است. دوباره وارد کنید.")
         return
       }
+      const uid = Number(token)
       await storage.addAdmin(uid, s.role || "admin")
       sessions.delete(ctx.from.id)
       await ctx.reply(s.role === "superadmin" ? "سوپرادمین اضافه شد" : "ادمین اضافه شد")
@@ -316,11 +362,11 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     }
     if (s.step === "setrole_target") {
       const token = (ctx.message.text || "").trim()
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) {
-        await ctx.reply("کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید")
+      if (!/^\d+$/.test(token)) {
+        await ctx.reply("فقط شناسه عددی معتبر است. دوباره وارد کنید.")
         return
       }
+      const uid = Number(token)
       sessions.delete(ctx.from.id)
       await ctx.reply(`نقش جدید را انتخاب کنید برای کاربر #${uid}`, {
         reply_markup: {
@@ -329,6 +375,10 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
               { text: "ادمین", callback_data: `role:set:admin:${uid}` },
               { text: "سوپرادمین", callback_data: `role:set:superadmin:${uid}` },
             ],
+            [
+              { text: "گزارش", callback_data: `role:set:report:${uid}` },
+              { text: "اعلان", callback_data: `role:set:broadcaster:${uid}` },
+            ],
           ],
         },
       })
@@ -336,11 +386,11 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     }
     if (s.step === "remove_admin_id") {
       const token = (ctx.message.text || "").trim()
-      const uid = /^\d+$/.test(token) ? Number(token) : await storage.resolveUserIdByUsername(token)
-      if (!uid) {
-        await ctx.reply("کاربر یافت نشد؛ از شناسه عددی یا یوزرنیم موجود در دیتابیس استفاده کنید")
+      if (!/^\d+$/.test(token)) {
+        await ctx.reply("فقط شناسه عددی معتبر است. دوباره وارد کنید.")
         return
       }
+      const uid = Number(token)
       await storage.removeAdmin(uid)
       sessions.delete(ctx.from.id)
       await ctx.reply("ادمین حذف شد")
@@ -610,7 +660,7 @@ function registerAdmin(bot, storage, config, sessions, helpers) {
     }
     await ctx.answerCbQuery()
   })
-  bot.action(/role:set:(admin|superadmin):(\d+)/, async (ctx) => {
+  bot.action(/role:set:(admin|superadmin|report|broadcaster):(\d+)/, async (ctx) => {
     if (!(await helpers.isSuper(ctx))) {
       await ctx.answerCbQuery()
       return

@@ -19,7 +19,7 @@ function registerReport(bot, storage, config, reportPrefs, helpers) {
   }
   bot.action("stats", async (ctx) => {
     try {
-      if (!(await helpers.isAdmin(ctx))) {
+      if (!(await helpers.can(ctx, "report"))) {
         await ctx.answerCbQuery("دسترسی ندارید")
         return
       }
@@ -31,7 +31,7 @@ function registerReport(bot, storage, config, reportPrefs, helpers) {
   })
   bot.command("stats", async (ctx) => {
     try {
-      if (!(await helpers.isAdmin(ctx))) {
+      if (!(await helpers.can(ctx, "report"))) {
         await ctx.reply("دسترسی ندارید")
         return
       }
@@ -42,12 +42,12 @@ function registerReport(bot, storage, config, reportPrefs, helpers) {
   })
   bot.hears("گزارش", async (ctx) => {
     try {
-      if (!(await helpers.isAdmin(ctx))) return
+      if (!(await helpers.can(ctx, "report"))) return
       await openReportMenu(ctx)
     } catch {}
   })
   bot.action(/report:users:(\d+)/, async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "report"))) {
       await ctx.answerCbQuery()
       return
     }
@@ -66,7 +66,7 @@ function registerReport(bot, storage, config, reportPrefs, helpers) {
     await ctx.answerCbQuery()
   })
   bot.action(/report:events:(\d+)/, async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "report"))) {
       await ctx.answerCbQuery()
       return
     }
@@ -87,7 +87,7 @@ function registerReport(bot, storage, config, reportPrefs, helpers) {
     await ctx.answerCbQuery()
   })
   bot.action("report:size", async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "report"))) {
       await ctx.answerCbQuery()
       return
     }
@@ -107,7 +107,7 @@ function registerReport(bot, storage, config, reportPrefs, helpers) {
     await ctx.answerCbQuery()
   })
   bot.action(/report:setsize:(\d+)/, async (ctx) => {
-    if (!(await helpers.isAdmin(ctx))) {
+    if (!(await helpers.can(ctx, "report"))) {
       await ctx.answerCbQuery()
       return
     }

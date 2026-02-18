@@ -18,7 +18,20 @@ function createBot(storage, config) {
     const role = await storage.getAdminRole(ctx.from.id)
     return !!role
   }
-  const helpers = { isSuper, isAdmin }
+  async function can(ctx, perm) {
+    if (await isSuper(ctx)) return true
+    const role = await storage.getAdminRole(ctx.from.id)
+    if (!role) return false
+    const perms = {
+      broadcast: new Set(["admin", "broadcaster"]),
+      schedule: new Set(["admin", "broadcaster"]),
+      report: new Set(["admin", "report"]),
+    }
+    const p = perms[perm]
+    if (!p) return false
+    return p.has(role)
+  }
+  const helpers = { isSuper, isAdmin, can }
   registerSections(bot, storage, config, sessions, helpers)
   registerReport(bot, storage, config, reportPrefs, helpers)
   registerAdmin(bot, storage, config, sessions, helpers)
