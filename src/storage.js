@@ -16,6 +16,11 @@ let createBroadcast = async () => ({ id: null })
 let listDueBroadcasts = async () => []
 let markBroadcastSent = async () => {}
 let resolveUserIdByUsername = async () => null
+let resetDatabase = async () => {}
+let listScheduledBroadcasts = async () => []
+let getBroadcast = async () => null
+let updateBroadcastText = async () => false
+let updateBroadcastSchedule = async () => false
 if (usePg) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -166,6 +171,45 @@ if (usePg) {
     const r = await pool.query(`SELECT id FROM users WHERE lower(username) = lower($1) LIMIT 1`, [clean])
     return r.rows[0]?.id || null
   }
+  resetDatabase = async function() {
+    await pool.query('BEGIN')
+    try {
+      await pool.query(`TRUNCATE TABLE events, broadcasts, users RESTART IDENTITY`)
+      await pool.query('COMMIT')
+    } catch (e) {
+      await pool.query('ROLLBACK')
+      throw e
+    }
+  }
+  listScheduledBroadcasts = async function(limit=20, offset=0) {
+    const r = await pool.query(
+      `SELECT id, creator_id, text, filters, status, scheduled_at, created_at
+       FROM broadcasts
+       WHERE status='scheduled'
+       ORDER BY scheduled_at ASC
+       LIMIT $1 OFFSET $2`, [limit, offset]
+    )
+    return r.rows || []
+  }
+  getBroadcast = async function(id) {
+    const r = await pool.query(
+      `SELECT id, creator_id, text, filters, status, scheduled_at, created_at
+       FROM broadcasts WHERE id=$1`, [id]
+    )
+    return r.rows[0] || null
+  }
+  updateBroadcastText = async function(id, text) {
+    const r = await pool.query(
+      `UPDATE broadcasts SET text=$2 WHERE id=$1 AND status='scheduled'`, [id, text]
+    )
+    return r.rowCount > 0
+  }
+  updateBroadcastSchedule = async function(id, iso) {
+    const r = await pool.query(
+      `UPDATE broadcasts SET scheduled_at=$2 WHERE id=$1 AND status='scheduled'`, [id, iso]
+    )
+    return r.rowCount > 0
+  }
 } else {
   const DB_FILE = path.join(process.cwd(), 'analytics.json')
   if (!fs.existsSync(DB_FILE)) {
@@ -292,5 +336,40 @@ if (usePg) {
     const found = Object.values(s.users).find(u => (u.username || '').toLowerCase() === clean.toLowerCase())
     return found ? found.id : null
   }
+  resetDatabase = async function() {
+    const s = readStore()
+    const keepAdmins = s.admins || []
+    const fresh = { users: {}, events: [], admins: keepAdmins, broadcasts: [] }
+    fs.writeFileSync(DB_FILE, JSON.stringify(fresh))
+  }
+  listScheduledBroadcasts = async function(limit=20, offset=0) {
+    const s = readStore()
+    const all = (s.broadcasts || []).filter(b => b.status === 'scheduled').sort((a,b) => {
+      const ta = b.scheduled_at ? new Date(a.scheduled_at).getTime() : 0
+      const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0
+      return ta - tb
+    })
+    return all.slice(offset, offset + limit)
+  }
+  getBroadcast = async function(id) {
+    const s = readStore()
+    return (s.broadcasts || []).find(b => b.id === Number(id)) || null
+  }
+  updateBroadcastText = async function(id, text) {
+    const s = readStore()
+    const i = (s.broadcasts || []).findIndex(b => b.id === Number(id) && b.status === 'scheduled')
+    if (i < 0) return false
+    s.broadcasts[i].text = text
+    writeStore(s)
+    return true
+  }
+  updateBroadcastSchedule = async function(id, iso) {
+    const s = readStore()
+    const i = (s.broadcasts || []).findIndex(b => b.id === Number(id) && b.status === 'scheduled')
+    if (i < 0) return false
+    s.broadcasts[i].scheduled_at = iso
+    writeStore(s)
+    return true
+  }
 }
-module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg, addAdmin, removeAdmin, listAdmins, getAdminRole, getRecipients, createBroadcast, listDueBroadcasts, markBroadcastSent, resolveUserIdByUsername }
+module.exports = { initDb, upsertUser, logEvent, getStats, getAllData, usePg, addAdmin, removeAdmin, listAdmins, getAdminRole, getRecipients, createBroadcast, listDueBroadcasts, markBroadcastSent, resolveUserIdByUsername, resetDatabase, listScheduledBroadcasts, getBroadcast, updateBroadcastText, updateBroadcastSchedule }
